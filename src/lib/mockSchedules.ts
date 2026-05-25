@@ -205,8 +205,44 @@ const schedules: Schedule[] = [
   },
 ];
 
+/** 팀 멤버 로스터 (운영진 포함). 참여 멤버 선택 목록에 사용 */
+const TEAM_MEMBERS = ['김운영', '이보컬', '박드럼', '최베이스'];
+
+/** 참여 멤버 선택용 명단. 현재 사용자가 명단에 없으면 맨 앞에 추가한다. */
+export function getTeamMembers(currentUserName?: string): string[] {
+  if (currentUserName && !TEAM_MEMBERS.includes(currentUserName)) {
+    return [currentUserName, ...TEAM_MEMBERS];
+  }
+  return [...TEAM_MEMBERS];
+}
+
 export function getSchedules(): Schedule[] {
   return schedules;
+}
+
+export interface NewScheduleInput {
+  name: string;
+  eventDate: string | null;
+  location: string;
+  practiceStart: string | null;
+  practiceEnd: string | null;
+  participants: string[];
+}
+
+/** 일정 추가. 새 일정을 목록 맨 앞에 넣고 추가된 일정을 반환한다. */
+export function addSchedule(input: NewScheduleInput): Schedule {
+  const schedule: Schedule = {
+    id: `s${Date.now()}`,
+    name: input.name.trim(),
+    eventDate: input.eventDate,
+    location: input.location.trim(),
+    practiceStart: input.practiceStart,
+    practiceEnd: input.practiceEnd,
+    participants: input.participants,
+    practiceSessions: [],
+  };
+  schedules.unshift(schedule);
+  return schedule;
 }
 
 export function getScheduleById(id: string): Schedule | undefined {

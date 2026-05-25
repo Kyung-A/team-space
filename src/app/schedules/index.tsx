@@ -9,9 +9,9 @@ import {
 } from '@/lib/mockSchedules';
 import { ScheduleListItem } from '@/components/schedules/ScheduleListItem';
 import { ScheduleFilters } from '@/components/schedules/ScheduleFilters';
+import { ScheduleCreateSheet } from '@/components/schedules/ScheduleCreateSheet';
 import { TabBar } from '@/components/TabBar';
 import { Button, ButtonText } from '@/components/ui/button';
-import { notify } from '@/lib/notify';
 
 export default function Schedules() {
   const { teamName, userName, role } = useSession();
@@ -19,6 +19,9 @@ export default function Schedules() {
 
   const [statuses, setStatuses] = useState<ScheduleStatus[]>([]);
   const [mineOnly, setMineOnly] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // 인메모리 목업이라 추가 후 강제 리렌더로 목록을 갱신한다
+  const [, setRefresh] = useState(0);
 
   const toggleStatus = (s: ScheduleStatus) =>
     setStatuses((prev) =>
@@ -48,9 +51,7 @@ export default function Schedules() {
             <Button
               size="sm"
               action="primary"
-              onPress={() =>
-                notify('준비 중', '일정 추가 기능은 곧 제공됩니다.')
-              }
+              onPress={() => setSheetOpen(true)}
             >
               <ButtonText>일정 추가하기</ButtonText>
             </Button>
@@ -92,6 +93,15 @@ export default function Schedules() {
       </View>
 
       <TabBar />
+
+      <ScheduleCreateSheet
+        isOpen={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onCreated={() => {
+          setSheetOpen(false);
+          setRefresh((n) => n + 1);
+        }}
+      />
     </SafeAreaView>
   );
 }
