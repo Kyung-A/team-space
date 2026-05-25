@@ -4,6 +4,8 @@ import { useForm, Controller } from 'react-hook-form';
 import { Input, InputField } from '@/components/ui/input';
 import { Button, ButtonText } from '@/components/ui/button';
 import { createTeam } from '@/lib/mockTeams';
+import { useSession } from '@/lib/session';
+import { markMyParticipation } from '@/lib/mockSchedules';
 
 interface CreateTeamForm {
   name: string;
@@ -14,6 +16,7 @@ interface CreateTeamForm {
 
 export default function CreateTeam() {
   const router = useRouter();
+  const setSession = useSession((s) => s.setSession);
   const {
     control,
     handleSubmit,
@@ -30,8 +33,11 @@ export default function CreateTeam() {
       setError(result.field, { type: 'manual', message: result.message });
       return;
     }
-    // 운영진은 생성과 동시에 인증 완료 → 팀 일정 목록으로 진입 (시작화면으로 돌아가지 않음)
-    router.replace({ pathname: '/schedules', params: { teamName: result.teamName } });
+    // 운영진은 생성과 동시에 인증 완료 → 세션 세팅 후 팀 일정 목록으로 진입
+    const ownerName = values.ownerName.trim();
+    setSession({ teamName: result.teamName, userName: ownerName, role: 'admin' });
+    markMyParticipation(ownerName); // 데모: '내가 참여하는 일정' 필터용
+    router.replace('/schedules');
   };
 
   return (
