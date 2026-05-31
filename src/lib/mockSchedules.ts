@@ -31,15 +31,17 @@ export interface PracticeSession {
  * - 1시간 단위 시간대 선택 (예: 14:00~17:00) — 한 날짜에 여러 슬롯 가능
  * - 또는 하루종일(isFullDay=true) 선택
  * - 연속 구간은 단일 row로 저장
- * 일정 수정 시 cascade 대상 (날짜 기준).
+ * - 새벽 시간대(예: 23:00~02:00)는 endsNextDay=true 단일 row로 표현
+ * 일정 수정 시 cascade 대상 (시작 일자 기준).
  */
 export interface AvailabilitySlot {
   id: string;
   userName: string;
-  date: string; // 'YYYY-MM-DD'
+  date: string; // 'YYYY-MM-DD' — 시작 일자
   isFullDay: boolean;
-  startTime?: string; // 'HH:mm' — isFullDay=false일 때만
-  endTime?: string;
+  startTime?: string; // 'HH:00' — 정시, isFullDay=false일 때만
+  endTime?: string; // 'HH:00'
+  endsNextDay?: boolean; // true면 endTime이 다음날 (새벽 시간대)
 }
 
 export interface Schedule {
@@ -427,6 +429,49 @@ export function updateSchedule(
     removedPracticeSessions,
     removedPracticeParticipations,
   };
+}
+
+/** 본인이 등록한 가능 슬롯 조회 */
+export function getMyAvailability(
+  scheduleId: string,
+  userName: string
+): AvailabilitySlot[] {
+  const s = schedules.find((x) => x.id === scheduleId);
+  if (!s) return [];
+  return s.availabilitySlots.filter((slot) => slot.userName === userName);
+}
+
+export interface AvailabilityInput {
+  date: string;
+  isFullDay: boolean;
+  startTime?: string;
+  endTime?: string;
+  endsNextDay?: boolean;
+}
+
+/**
+ * 본인의 availability_slots를 입력 목록으로 덮어쓴다.
+ * (재진입 수정 흐름: 본인 슬롯만 모두 교체, 다른 사람 슬롯은 보존)
+ */
+export function saveAvailability(
+  scheduleId: string,
+  userName: string,
+  inputs: AvailabilityInput[]
+): { ok: true; saved: number } | { ok: false; reason: string } {
+  const idx = schedules.findIndex((x) => x.id === scheduleId);
+  if (idx === -1) return { ok: false, reason: '일정을 찾을 수 없어요.' };
+  const sched = schedules[idx];
+  const others = sched.availabilitySlots.filter(
+    (s) => s.userName !== userName
+  );
+  const now = Date.now();
+  const mine: AvailabilitySlot[] = inputs.map((input, i) => ({
+    id: `${scheduleId}-av-${userName}-${now}-${i}`,
+    userName,
+    ...input,
+  }));
+  schedules[idx] = { ...sched, availabilitySlots: [...others, ...mine] };
+  return { ok: true, saved: mine.length };
 }
 
 /**

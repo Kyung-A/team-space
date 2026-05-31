@@ -115,7 +115,7 @@ export default function ScheduleDetailScreen() {
                 <Button
                   action="primary"
                   onPress={() =>
-                    notify('준비 중', '연습 가능 일정 등록 화면은 곧 제공됩니다.')
+                    router.push(`/schedules/${schedule.id}/availability`)
                   }
                 >
                   <ButtonText>연습 가능 일정 등록하기</ButtonText>
@@ -125,12 +125,7 @@ export default function ScheduleDetailScreen() {
                 variant="outline"
                 action="secondary"
                 onPress={() =>
-                  notify(
-                    '준비 중',
-                    isAdmin
-                      ? '참여 멤버들의 연습 가능 스케줄 보기 화면은 곧 제공됩니다.'
-                      : '연습 가능 스케줄 보기 화면은 곧 제공됩니다.'
-                  )
+                  router.push(`/schedules/${schedule.id}/availability-summary`)
                 }
               >
                 <ButtonText>

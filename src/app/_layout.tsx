@@ -23,7 +23,9 @@ export default function RootLayout() {
             options={{ headerShown: true, title: '팀 합류하기', headerBackTitle: '뒤로' }}
           />
           <Stack.Screen name="schedules/index" options={{ gestureEnabled: false }} />
-          <Stack.Screen name="schedules/[id]" />
+          <Stack.Screen name="schedules/[id]/index" />
+          <Stack.Screen name="schedules/[id]/availability" />
+          <Stack.Screen name="schedules/[id]/availability-summary" />
         </Stack>
       </GluestackUIProvider>
     </SafeAreaProvider>
