@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ScrollView, View, Text, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,6 +11,7 @@ import {
 } from '@/lib/mockSchedules';
 import { ScheduleStatusBadge, PracticeStatusBadge } from '@/components/schedules/StatusBadge';
 import { MemberAvatarRow, MemberAvatar } from '@/components/schedules/MemberAvatars';
+import { ScheduleEditSheet } from '@/components/schedules/ScheduleEditSheet';
 import { Button, ButtonText } from '@/components/ui/button';
 import { notify } from '@/lib/notify';
 
@@ -30,7 +32,15 @@ export default function ScheduleDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { userName, role } = useSession();
 
-  const schedule = id ? getScheduleById(id) : undefined;
+  const [editOpen, setEditOpen] = useState(false);
+  // 수정 후에도 즉시 반영되도록 state로 보관. id가 바뀌면(다른 일정) 새로 가져온다.
+  const [schedule, setSchedule] = useState(() =>
+    id ? getScheduleById(id) : undefined
+  );
+
+  useEffect(() => {
+    setSchedule(id ? getScheduleById(id) : undefined);
+  }, [id]);
 
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/schedules'));
 
@@ -62,10 +72,7 @@ export default function ScheduleDetailScreen() {
         <TopBar onBack={goBack}>
           {isAdmin ? (
             <View className="flex-row items-center gap-1">
-              <HeaderTextButton
-                label="수정"
-                onPress={() => notify('준비 중', '일정 수정 기능은 곧 제공됩니다.')}
-              />
+              <HeaderTextButton label="수정" onPress={() => setEditOpen(true)} />
               <HeaderTextButton
                 label="삭제"
                 tone="danger"
@@ -150,6 +157,18 @@ export default function ScheduleDetailScreen() {
           </View>
         </ScrollView>
       </View>
+
+      {isAdmin ? (
+        <ScheduleEditSheet
+          schedule={schedule}
+          isOpen={editOpen}
+          onClose={() => setEditOpen(false)}
+          onSaved={(updated) => {
+            setEditOpen(false);
+            setSchedule(updated);
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

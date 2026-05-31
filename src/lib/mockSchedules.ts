@@ -25,6 +25,23 @@ export interface PracticeSession {
   participants: PracticeParticipant[];
 }
 
+/**
+ * 멤버가 본인이 연습 가능하다고 등록한 시간 슬롯.
+ * 기획서 availability_slots에 해당.
+ * - 1시간 단위 시간대 선택 (예: 14:00~17:00) — 한 날짜에 여러 슬롯 가능
+ * - 또는 하루종일(isFullDay=true) 선택
+ * - 연속 구간은 단일 row로 저장
+ * 일정 수정 시 cascade 대상 (날짜 기준).
+ */
+export interface AvailabilitySlot {
+  id: string;
+  userName: string;
+  date: string; // 'YYYY-MM-DD'
+  isFullDay: boolean;
+  startTime?: string; // 'HH:mm' — isFullDay=false일 때만
+  endTime?: string;
+}
+
 export interface Schedule {
   id: string;
   name: string;
@@ -35,6 +52,7 @@ export interface Schedule {
   practiceEnd: string | null; // 'YYYY-MM-DD'
   participants: string[]; // 일정 참여 멤버 이름
   practiceSessions: PracticeSession[];
+  availabilitySlots: AvailabilitySlot[];
 }
 
 export const STATUS_LABEL: Record<ScheduleStatus, string> = {
@@ -132,6 +150,54 @@ const schedules: Schedule[] = [
         participants: [{ name: '이보컬' }, { name: '최베이스' }],
       },
     ],
+    availabilitySlots: [
+      // 박드럼 — 같은 날 여러 시간대 + 하루종일 케이스 혼합 (연습 기간: -10 ~ 18)
+      {
+        id: 's1-a1',
+        userName: '박드럼',
+        date: fromToday(-3),
+        isFullDay: false,
+        startTime: '14:00',
+        endTime: '17:00',
+      },
+      {
+        id: 's1-a2',
+        userName: '박드럼',
+        date: fromToday(-3),
+        isFullDay: false,
+        startTime: '19:00',
+        endTime: '22:00',
+      },
+      {
+        id: 's1-a3',
+        userName: '박드럼',
+        date: fromToday(5),
+        isFullDay: true,
+      },
+      {
+        id: 's1-a4',
+        userName: '박드럼',
+        date: fromToday(12),
+        isFullDay: false,
+        startTime: '15:00',
+        endTime: '18:00',
+      },
+      // 이보컬 — 연습 기간 끝자락 (수정 시 cascade 시연용)
+      {
+        id: 's1-a5',
+        userName: '이보컬',
+        date: fromToday(15),
+        isFullDay: false,
+        startTime: '20:00',
+        endTime: '22:00',
+      },
+      {
+        id: 's1-a6',
+        userName: '이보컬',
+        date: fromToday(17),
+        isFullDay: true,
+      },
+    ],
   },
   {
     id: 's2',
@@ -154,6 +220,7 @@ const schedules: Schedule[] = [
         ],
       },
     ],
+    availabilitySlots: [],
   },
   {
     id: 's3',
@@ -173,6 +240,7 @@ const schedules: Schedule[] = [
         participants: [{ name: '박드럼' }, { name: '최베이스' }],
       },
     ],
+    availabilitySlots: [],
   },
   {
     id: 's4',
@@ -183,6 +251,7 @@ const schedules: Schedule[] = [
     practiceEnd: null,
     participants: ['김운영', '이보컬', '박드럼'],
     practiceSessions: [],
+    availabilitySlots: [],
   },
   {
     id: 's5',
@@ -202,6 +271,7 @@ const schedules: Schedule[] = [
         participants: [{ name: '이보컬' }, { name: '최베이스' }],
       },
     ],
+    availabilitySlots: [],
   },
 ];
 
@@ -240,6 +310,7 @@ export function addSchedule(input: NewScheduleInput): Schedule {
     practiceEnd: input.practiceEnd,
     participants: input.participants,
     practiceSessions: [],
+    availabilitySlots: [],
   };
   schedules.unshift(schedule);
   return schedule;
@@ -247,6 +318,115 @@ export function addSchedule(input: NewScheduleInput): Schedule {
 
 export function getScheduleById(id: string): Schedule | undefined {
   return schedules.find((s) => s.id === id);
+}
+
+export interface UpdateScheduleInput {
+  name: string;
+  eventDate: string | null;
+  location: string;
+  practiceStart: string | null;
+  practiceEnd: string | null;
+  participants: string[];
+}
+
+export interface UpdateScheduleResult {
+  schedule: Schedule;
+  /** 이번 수정에서 새로 추가된 참여 멤버 (= 이전엔 없었던 사람) */
+  addedParticipants: string[];
+  /** 이번 수정에서 제외된 참여 멤버 */
+  removedParticipants: string[];
+  /** cascade로 삭제된 availability_slots 개수 */
+  removedAvailability: number;
+  /** cascade로 삭제된 practice_sessions 개수 (연습 기간 밖) */
+  removedPracticeSessions: number;
+  /** cascade로 삭제된 practice_session_participants 개수 (멤버 제외) */
+  removedPracticeParticipations: number;
+}
+
+/**
+ * 일정 수정. 다음 cascade를 함께 처리한다.
+ * - 연습 기간 축소/제거: 새 기간 밖 날짜의 practice_sessions + availability_slots 삭제
+ * - 참여 멤버 제외: 해당 멤버의 availability_slots + practice_session_participants 삭제
+ */
+export function updateSchedule(
+  id: string,
+  input: UpdateScheduleInput
+): UpdateScheduleResult | null {
+  const idx = schedules.findIndex((s) => s.id === id);
+  if (idx === -1) return null;
+  const prev = schedules[idx];
+
+  const addedParticipants = input.participants.filter(
+    (p) => !prev.participants.includes(p)
+  );
+  const removedParticipants = prev.participants.filter(
+    (p) => !input.participants.includes(p)
+  );
+
+  let removedAvailability = 0;
+  let removedPracticeSessions = 0;
+  let removedPracticeParticipations = 0;
+
+  const inPracticeRange = (date: string): boolean => {
+    if (!input.practiceStart || !input.practiceEnd) return false;
+    return date >= input.practiceStart && date <= input.practiceEnd;
+  };
+
+  // 1) 연습 기간 밖 practice_sessions 삭제 (기간이 사라지면 전체 삭제)
+  let practiceSessions = prev.practiceSessions.filter((session) => {
+    if (!inPracticeRange(session.date)) {
+      removedPracticeSessions++;
+      return false;
+    }
+    return true;
+  });
+
+  // 2) 남은 practice_sessions의 참여자에서 제외 멤버 제거
+  practiceSessions = practiceSessions.map((session) => {
+    const filtered = session.participants.filter((p) => {
+      if (removedParticipants.includes(p.name)) {
+        removedPracticeParticipations++;
+        return false;
+      }
+      return true;
+    });
+    return { ...session, participants: filtered };
+  });
+
+  // 3) availability_slots: 제외 멤버 + 연습 기간 밖 모두 삭제
+  const availabilitySlots = prev.availabilitySlots.filter((slot) => {
+    if (removedParticipants.includes(slot.userName)) {
+      removedAvailability++;
+      return false;
+    }
+    if (!inPracticeRange(slot.date)) {
+      removedAvailability++;
+      return false;
+    }
+    return true;
+  });
+
+  const updated: Schedule = {
+    ...prev,
+    name: input.name.trim(),
+    eventDate: input.eventDate,
+    location: input.location.trim(),
+    practiceStart: input.practiceStart,
+    practiceEnd: input.practiceEnd,
+    participants: input.participants,
+    practiceSessions,
+    availabilitySlots,
+  };
+  schedules[idx] = updated;
+
+  return {
+    schedule: updated,
+    addedParticipants,
+    removedParticipants,
+    removedAvailability,
+    removedPracticeSessions,
+    removedPracticeParticipations,
+  };
 }
 
 /**
